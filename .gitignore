@@ -1,0 +1,23 @@
+# Données lourdes (jamais sur GitHub)
+data/dataBase_*/
+data/Resized*/
+*.zip
+*.tar
+
+# Modèles lourds (déposés séparément si volumineux)
+models/*.keras
+models/*.h5
+models/*.joblib
+models/*.pkl
+# On garde les templates légers :
+!models/templates/
+!models/templates/*.npy
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+
+# Streamlit
+.streamlit/secrets.toml
