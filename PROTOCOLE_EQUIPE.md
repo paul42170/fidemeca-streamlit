@@ -103,14 +103,25 @@ git push
 
 ---
 
-## 6. Brancher le modèle final (quand il sera prêt)
+## 6. Modèles branchés (mise à jour post-rapport final)
 
-L'appli détecte automatiquement les modèles présents dans `models/` (voir la barre latérale) :
+L'appli détecte automatiquement les modèles présents dans `models/` (voir la barre latérale).
+Modèles actuellement inclus dans le dépôt (`tensorflow-cpu` activé dans `requirements.txt`) :
 
-- **Modèle sur features** : déposer `models/anomaly_model.joblib` (+ `models/scaler.joblib`).
-- **Autoencodeur Keras** : déposer `models/autoencoder.keras` (et décommenter `tensorflow` dans `requirements.txt`).
+- **Baseline** (différence au template, 15 catégories) : toujours actif.
+- **Modèle sur features (RF)** : `models/anomaly_model.joblib` + `models/scaler.joblib`, entraîné
+  sur les 3 catégories pilotes (bottle/carpet/screw) — avertissement affiché pour les autres.
+- **AutoEncodeur Keras** : un fichier par catégorie pilote, `models/autoencoder_<categorie>.keras`
+  (bottle/carpet/screw).
+- **CNN supervisé 15 catégories** : 3 variantes récupérées du dépôt GitHub d'équipe
+  (`DataScientest-Studio/avr26_bmle_ds_anomalies`, branche `main`, dossier `models/`) —
+  `cnn_binary_15cat_best.keras` (64×64 Flatten, production), `..._128_best.keras` (128×128),
+  `..._gap_best.keras` (ablation GAP). Sélection de la variante dans l'onglet Modélisation.
+- **EfficientNetB0 / ResNet50 / PaDiM** : résultats présentés dans le nouvel onglet
+  **📊 Comparatif de l'équipe** (tableau + graphique), mais pas de démo live — poids non
+  versionnés sur GitHub (trop volumineux, entraînés catégorie par catégorie).
 
-Puis `git push` → l'appli en ligne se met à jour et le mode correspondant s'active.
+Après tout ajout/màj de modèle : `git push` → l'appli en ligne se met à jour automatiquement.
 
 ⚠️ À vérifier dans `app.py` (onglet Modélisation) : la **convention de sortie** du modèle
 (`predict` = 1 / -1 pour anomalie selon IsolationForest / OneClassSVM / autre) doit correspondre
