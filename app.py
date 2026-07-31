@@ -5,13 +5,15 @@ app.py — Application Streamlit — Détection d'anomalies (Projet DS Fidémeca
 Lancement :  streamlit run app.py
 
 Structure (onglets) :
-  1. 🏭 Contexte           — problème métier + approche
-  2. 🔍 Exploration        — les 5 graphiques du dataset
-  3. 🛠️ Pré-processing & FE — resize + features (avec démo template/diff)
-  4. 🤖 Modélisation & Démo — upload d'une image → score d'anomalie (modèle chargé, sans réentraînement)
-  5. 📌 Conclusion         — résultats, limites, perspectives
+  1. 🏭 Contexte              — problème métier + approche
+  2. 🔍 Exploration           — les 5 graphiques du dataset
+  3. 🛠️ Pré-processing & FE    — resize + features (avec démo template/diff)
+  4. 🤖 Modélisation & Démo    — upload d'une image → score d'anomalie (baseline / RF / AutoEncoder / CNN)
+  5. 📊 Comparatif de l'équipe — tous les modèles testés par l'équipe (GitHub), avec ou sans démo live
+  6. 📌 Conclusion            — résultats, limites, perspectives
 
-Aucun modèle n'est réentraîné : on charge des artefacts déjà produits (models/…).
+Aucun modèle n'est réentraîné : on charge des artefacts déjà produits (models/…), qu'ils
+viennent du dépôt Streamlit lui-même ou du dépôt GitHub d'équipe (CNN 15 catégories).
 Un mode "baseline" (différence au template) rend la démo fonctionnelle même sans modèle final.
 """
 import numpy as np
@@ -62,20 +64,25 @@ with st.sidebar:
     st.markdown("**Dataset :** MVTec AD (15 catégories, 5 354 images)")
     st.divider()
     st.caption("Modèles chargés (aucun réentraînement) :")
-    from inference import available_templates, load_feature_model, load_autoencoder
+    from inference import (available_templates, load_feature_model, available_autoencoders,
+                           available_cnn_variants)
     _tpls = available_templates()
     _fm, _sc = load_feature_model()
-    _ae = load_autoencoder()
+    _ae_cats = available_autoencoders()
+    _cnn_variants = available_cnn_variants()
     st.write("• Templates :", f"{len(_tpls)} dispo" if _tpls else "❌ aucun")
-    st.write("• Modèle features :", "✅" if _fm else "❌ absent")
-    st.write("• Autoencodeur :", "✅" if _ae else "❌ absent")
+    st.write("• Modèle features (RF) :", "✅" if _fm else "❌ absent")
+    st.write("• Autoencodeurs :", f"✅ {', '.join(_ae_cats)}" if _ae_cats else "❌ aucun")
+    st.write("• CNN 15 catégories :", f"✅ {len(_cnn_variants)} variante(s)" if _cnn_variants else "❌ absent")
+    st.caption("Détail des modèles testés par toute l'équipe → onglet 📊 Comparatif.")
 
 
 # ──────────────────────────────────────────────────────────────────────────
 # ONGLETS
 # ──────────────────────────────────────────────────────────────────────────
-t_ctx, t_expl, t_prep, t_model, t_ccl = st.tabs(
-    ["🏭 Contexte", "🔍 Exploration", "🛠️ Pré-processing & FE", "🤖 Modélisation & Démo", "📌 Conclusion"]
+t_ctx, t_expl, t_prep, t_model, t_cmp, t_ccl = st.tabs(
+    ["🏭 Contexte", "🔍 Exploration", "🛠️ Pré-processing & FE", "🤖 Modélisation & Démo",
+     "📊 Comparatif de l'équipe", "📌 Conclusion"]
 )
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -254,20 +261,31 @@ with t_model:
     st.header("Modélisation & démonstration")
     st.markdown("""
 La démo **charge un modèle déjà entraîné** (aucun réentraînement dans l'appli, conformément
-aux consignes). Trois modes selon ce qui est disponible dans `models/` :
+aux consignes du mentor). Quatre modes selon ce qui est disponible dans `models/` :
 """)
     from inference import (load_template, to_rgb_array, score_baseline, extract_features,
-                           load_feature_model, load_autoencoder, score_autoencoder, available_templates)
+                           load_feature_model, load_autoencoder, score_autoencoder,
+                           available_templates, available_autoencoders, available_cnn_variants,
+                           load_cnn, score_cnn)
+
+    ae_cats = available_autoencoders()
+    cnn_variants = available_cnn_variants()
     mode = st.radio("Mode de détection", [
         "Baseline — différence au template (toujours dispo)",
-        "Modèle sur features (joblib)",
-        "Autoencodeur (Keras)",
+        "Modèle sur features — Random Forest (joblib)",
+        f"AutoEncodeur (Keras) — {', '.join(ae_cats) if ae_cats else 'aucun disponible'}",
+        f"CNN supervisé — 15 catégories (Keras) — {len(cnn_variants)} variante(s)",
     ], horizontal=False)
 
     tpls = available_templates()
     colL, colR = st.columns([1, 2])
     cat = colL.selectbox("Catégorie de la pièce", tpls or C.CATEGORIES)
-    seuil = colL.slider("Seuil de décision (anomalie si score >)", 0.0, 60.0, 12.0, 0.5)
+    variant = None
+    if mode.startswith("CNN"):
+        variant = colL.selectbox("Variante du CNN (ablation — voir Partie IV du rapport)", cnn_variants)
+        seuil = 50.0
+    else:
+        seuil = colL.slider("Seuil de décision (anomalie si score >)", 0.0, 60.0, 12.0, 0.5)
     up = colR.file_uploader("Déposer une image de pièce à contrôler", type=["png", "jpg", "jpeg"])
 
     if up is not None:
@@ -292,28 +310,30 @@ aux consignes). Trois modes selon ce qui est disponible dans `models/` :
                         "🔴 Pièce probablement DÉFECTUEUSE" if verdict else "🟢 Pièce conforme")
 
             elif mode.startswith("Modèle sur features"):
+                if cat not in C.FEATURE_MODEL_CATEGORIES:
+                    st.warning(f"Le modèle Random Forest a été entraîné sur les catégories pilotes "
+                               f"**{', '.join(C.FEATURE_MODEL_CATEGORIES)}** uniquement. Le résultat sur "
+                               f"« {cat} » n'a pas été validé par l'équipe — à titre indicatif.")
                 model, scaler = load_feature_model()
                 if model is None or tpl is None:
-                    st.warning("Modèle joblib (`models/anomaly_model.joblib`) et/ou template absent. "
-                               "Dépose-les pour activer ce mode.")
+                    st.warning("Modèle joblib (`models/anomaly_model.joblib`) et/ou template absent.")
                 else:
                     feats = extract_features(img, tpl)
                     X = np.array([[feats[c] for c in C.FEATURE_COLS]])
                     if scaler is not None:
                         X = scaler.transform(X)
-                    # convention : predict → 1 = anomalie, ou decision_function/score_samples
-                    if hasattr(model, "predict"):
-                        pred = model.predict(X)[0]
-                        verdict = int(pred) in (1, -1)  # -1 = anomalie pour IsolationForest/OneClassSVM
+                    pred = model.predict(X)[0]
+                    verdict = int(pred) in (1, -1)  # -1 = anomalie pour IsolationForest/OneClassSVM
                     st.write("**Features extraites :**", {k: round(feats[k], 3) for k in C.FEATURE_COLS})
                     (st.error if verdict else st.success)(
                         "🔴 DÉFECTUEUSE" if verdict else "🟢 Conforme")
 
-            else:  # Autoencodeur
-                ae = load_autoencoder()
-                if ae is None:
-                    st.warning("Autoencodeur (`models/autoencoder.keras`) absent. Dépose-le pour activer ce mode.")
+            elif mode.startswith("AutoEncodeur"):
+                if cat not in ae_cats:
+                    st.warning(f"Aucun autoencodeur entraîné pour « {cat} ». Catégories disponibles : "
+                               f"{', '.join(ae_cats) if ae_cats else 'aucune'}.")
                 else:
+                    ae = load_autoencoder(cat)
                     res = score_autoencoder(img, ae)
                     verdict = res["score"] > (seuil / 1000)  # échelle MSE
                     m1, m2, m3 = st.columns(3)
@@ -323,16 +343,89 @@ aux consignes). Trois modes selon ce qui est disponible dans `models/` :
                     st.metric("Erreur de reconstruction (MSE)", f"{res['score']:.5f}")
                     (st.error if verdict else st.success)(
                         "🔴 DÉFECTUEUSE" if verdict else "🟢 Conforme")
+
+            else:  # CNN supervisé
+                cnn = load_cnn(variant) if variant else None
+                if cnn is None:
+                    st.warning("Aucune variante de CNN disponible dans `models/`.")
+                else:
+                    res = score_cnn(img, cnn)
+                    st.caption("Modèle entraîné sur les 15 catégories confondues (pas de template requis) "
+                               "— voir l'ablation Flatten vs GAP et 64×64 vs 128×128, Partie IV du rapport.")
+                    st.metric("Probabilité de défaut (sortie sigmoïde)", f"{res['score']:.3f}")
+                    st.progress(min(max(res["score"], 0.0), 1.0))
+                    (st.error if res["verdict"] else st.success)(
+                        "🔴 Pièce probablement DÉFECTUEUSE" if res["verdict"] else "🟢 Pièce conforme")
         except Exception as e:
             st.error(f"Erreur pendant le scoring : {e}")
     else:
         st.info("Dépose une image ci-dessus pour lancer la détection.")
 
-    st.caption("ℹ️ Le mode *baseline* fonctionne dès qu'un template existe ; les deux autres "
-               "s'activent quand l'équipe dépose le modèle correspondant dans `models/`.")
+    st.caption("ℹ️ Le mode *baseline* fonctionne dès qu'un template existe. Les autres modes s'appuient "
+               "sur des modèles réellement entraînés par l'équipe et versionnés sur GitHub "
+               "(`DataScientest-Studio/avr26_bmle_ds_anomalies`).")
 
 # ══════════════════════════════════════════════════════════════════════════
-# 5. CONCLUSION
+# 5. COMPARATIF DE TOUS LES MODÈLES DE L'ÉQUIPE
+# ══════════════════════════════════════════════════════════════════════════
+with t_cmp:
+    st.header("Comparatif de tous les modèles testés par l'équipe")
+    st.caption("Synthèse du rapport final — code complet sur le dépôt GitHub "
+               "`DataScientest-Studio/avr26_bmle_ds_anomalies` (branches de chaque membre, fusionnées sur `main`).")
+
+    st.subheader("Partie III — Reconnaissance de la catégorie d'objet")
+    st.caption("Jeu de 7 590 fichiers (391 images/catégorie après augmentation, 128×128×3).")
+    reco_df = pd.DataFrame({
+        "Modèle": ["Random Forest", "RNN Dense", "CNN", "LeNet", "AutoEncoder (test sur bottle)"],
+        "Auteur(s)": ["Fabrice", "Fabrice", "Fabrice / Paul", "Fabrice", "Fabrice"],
+        "Principe": ["Sur features engineered", "Réseau dense", "Convolution + pooling",
+                     "Architecture LeNet", "Reconstruction"],
+        "Erreurs de classement": ["47 images", "< 47 (non chiffré)", "4 images", "0", "0 (83/83 bottles)"],
+    })
+    st.dataframe(reco_df, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("Partie IV — Détection d'anomalies (métrique : AUC-ROC)")
+    st.caption("Moyenne sur les 15 catégories, sauf mention contraire. Source : rapport final de l'équipe.")
+
+    modele_df = pd.DataFrame({
+        "Modèle": ["AutoEncoder convolutif", "CNN scratch — 64×64 (Flatten)",
+                   "CNN scratch — 128×128 (Flatten)", "CNN scratch — 64×64 (GAP, ablation)",
+                   "Transfer Learning — EfficientNetB0", "Transfer Learning — ResNet50",
+                   "PaDiM (features pré-entraînées)"],
+        "Auteur(s)": ["Fabrice", "Paul (VM Liora)", "Ludovic", "Paul (ablation)", "Alex", "Alex", "Alex"],
+        "Protocole": ["Non supervisé (one-class)", "Supervisé", "Supervisé", "Supervisé",
+                      "Supervisé", "Supervisé", "Non supervisé (one-class)"],
+        "AUC-ROC moyen": [0.718, 0.748, 0.7295, 0.542, 0.937, 0.930, None],
+        "Disponible en démo live": ["✅ (bottle, carpet, screw)", "✅", "✅", "✅", "❌ poids non versionnés",
+                                     "❌ poids non versionnés", "❌ non finalisé"],
+    })
+    st.dataframe(modele_df, use_container_width=True, hide_index=True)
+
+    import matplotlib.pyplot as plt
+    plot_df = modele_df.dropna(subset=["AUC-ROC moyen"]).sort_values("AUC-ROC moyen")
+    fig, ax = plt.subplots(figsize=(9, 3.6))
+    colors = [C.COLOR_ANOMALY if v < 0.6 else (C.COLOR_PRIMARY if v > 0.9 else "#8FA8D6")
+              for v in plot_df["AUC-ROC moyen"]]
+    ax.barh(plot_df["Modèle"], plot_df["AUC-ROC moyen"], color=colors)
+    for i, v in enumerate(plot_df["AUC-ROC moyen"]):
+        ax.text(v + 0.01, i, f"{v:.3f}", va="center", fontsize=9)
+    ax.set_xlim(0, 1.05)
+    ax.set_xlabel("AUC-ROC moyen (15 catégories)")
+    ax.axvline(0.99, color="#555", linestyle="--", linewidth=1)
+    ax.text(0.99, -0.7, "État de l'art\n(PatchCore) ≈ 0.99", fontsize=8, color="#555", ha="center")
+    st.pyplot(fig)
+
+    st.info("**Ce qui a le plus fait progresser la performance :** le passage d'une approche non "
+            "supervisée pure (AutoEncoder) au transfer learning supervisé (EfficientNetB0, ResNet50) — "
+            "les features génériques ImageNet généralisent nettement mieux, en particulier sur les "
+            "textures répétitives où l'AutoEncoder et le CNN from scratch échouaient le plus.")
+    st.caption("EfficientNetB0/ResNet50/PaDiM ne sont pas chargés en démo live : leurs poids (plusieurs "
+               "centaines de Mo par catégorie) n'ont pas été versionnés sur GitHub — voir le rapport final "
+               "pour le détail complet des courbes ROC et matrices de confusion par catégorie.")
+
+# ══════════════════════════════════════════════════════════════════════════
+# 6. CONCLUSION
 # ══════════════════════════════════════════════════════════════════════════
 with t_ccl:
     st.header("Conclusion & perspectives")
@@ -340,16 +433,20 @@ with t_ccl:
 **Ce qui marche.** La **différence au template** sépare bien conformes et défectueux sur les
 surfaces lisses (`bottle`), confirmé statistiquement (delta de Cliff |δ| > 0,5, p < 10⁻¹⁵).
 Les features de texture (GLCM, LBP) complètent pour les surfaces répétitives (`carpet`).
+Le **transfer learning** (EfficientNetB0/ResNet50) surclasse largement l'approche non
+supervisée pure (AUC moyen 0,937 contre 0,718 pour l'AutoEncoder).
 
-**Limites.** Catégories à forte variabilité d'orientation (`screw`) plus difficiles.
-Approche par features sensible au recalage image/template.
+**Limites.** Catégories à forte variabilité d'orientation (`screw`) ou à texture répétitive
+(`carpet`, `tile`) plus difficiles pour les approches non supervisées. Absence de GPU sur la VM
+Liora : profondeur des architectures et nombre d'epochs limités.
 
-**Perspectives.**
-- Modèles non-supervisés dédiés : **Autoencodeur**, **PatchCore / PaDiM** (état de l'art).
-- **Localisation** du défaut (segmentation) via les masques `ground_truth`.
-- Étendre les 3 catégories pilotes aux **15**.
-- Industrialisation : intégration temps réel sur la ligne, seuil ajustable par catégorie.
+**Perspectives (voir rapport final, Partie V).**
+- Finaliser **PaDiM / PatchCore** (état de l'art, AUC ≈ 0,99) sur les 15 catégories.
+- Ajuster le **seuil de décision par catégorie** via la courbe ROC plutôt qu'un seuil fixe.
+- Infrastructure **GPU / PyTorch** pour tester des architectures plus profondes.
+- Étendre la **classification multi-classes** du type de défaut, aujourd'hui esquissée.
     """)
-    st.success("Solution retenue côté DPM : **contrôle visuel automatique à 100 %** — "
-               "ROI estimé ~2 ans, temps de contrôle 5 min → <15 s, rebuts 5 % → <3 %.")
-    st.caption("Rapport, notebooks et code : dépôt GitHub de l'équipe + Google Drive.")
+    st.success("Applicable en contrôle qualité **en complément — plutôt qu'en remplacement —** "
+               "d'un contrôle humain, en priorisant l'inspection manuelle sur les pièces à fort score d'anomalie.")
+    st.caption("Rapport final, notebooks et code complet : dépôt GitHub d'équipe "
+               "`DataScientest-Studio/avr26_bmle_ds_anomalies` + Google Drive.")

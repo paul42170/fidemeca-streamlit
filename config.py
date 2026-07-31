@@ -30,6 +30,17 @@ SCALER_PATH        = APP_ROOT / "models" / "scaler.joblib"
 # Autoencodeur Keras (.keras ou .h5) — à déposer par l'équipe.
 AUTOENCODER_PATH = APP_ROOT / "models" / "autoencoder.keras"
 
+# Autoencodeurs entraînés par catégorie (un fichier models/autoencoder_<categorie>.keras par catégorie).
+AUTOENCODER_DIR = APP_ROOT / "models"
+
+# CNN supervisé (15 catégories) entraîné par l'équipe sur GitHub (Paul/Ludovic) — 3 variantes
+# comparées lors de l'ablation (voir rapport, Partie IV). Aucune n'est réentraînée ici.
+CNN_MODELS = {
+    "CNN 64×64 — Flatten (production, AUC 0.748)": APP_ROOT / "models" / "cnn_binary_15cat_best.keras",
+    "CNN 128×128 — Flatten (AUC 0.7295)": APP_ROOT / "models" / "cnn_binary_15cat_128_best.keras",
+    "CNN 64×64 — GlobalAveragePooling, ablation (AUC 0.542)": APP_ROOT / "models" / "cnn_binary_15cat_gap_best.keras",
+}
+
 # --- Paramètres image ------------------------------------------------------
 DIMENSION = 128
 TARGET_SIZE = (DIMENSION, DIMENSION)   # (largeur, hauteur)
@@ -44,8 +55,17 @@ FEATURE_COLS = [
 
 GLCM_LEVELS = 24
 
-# Catégories (les 3 pilotes du projet ; élargir au besoin)
-CATEGORIES = ["bottle", "carpet", "screw"]
+# Les 15 catégories du dataset MVTec AD (templates disponibles pour les 15).
+CATEGORIES = [
+    "bottle", "cable", "capsule", "carpet", "grid", "hazelnut", "leather",
+    "metal_nut", "pill", "screw", "tile", "toothbrush", "transistor", "wood", "zipper",
+]
+
+# Catégories pilotes couvertes par le modèle sur features (RF) et par les autoencodeurs
+# par catégorie (les autres modèles de l'équipe — EfficientNet/ResNet/PaDiM — n'ont pas
+# leurs poids versionnés sur GitHub : trop volumineux pour être ré-entraînés/committés).
+FEATURE_MODEL_CATEGORIES = ["bottle", "carpet", "screw"]
+AUTOENCODER_CATEGORIES = ["bottle", "carpet", "screw"]
 
 # Palette
 COLOR_GOOD = "#2E7D32"

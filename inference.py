@@ -152,15 +152,65 @@ def load_feature_model():
         return None, None
 
 
-def load_autoencoder():
-    """Charge l'autoencodeur Keras s'il existe, sinon None."""
+def load_autoencoder(category: str | None = None):
+    """Charge l'autoencodeur Keras d'une catégorie (models/autoencoder_<categorie>.keras).
+    Sans argument, retourne le premier autoencodeur disponible (rétro-compatibilité)."""
     try:
-        if not C.AUTOENCODER_PATH.exists():
-            return None
         from tensorflow import keras
-        return keras.models.load_model(C.AUTOENCODER_PATH, compile=False)
+        if category is not None:
+            p = C.AUTOENCODER_DIR / f"autoencoder_{category}.keras"
+            return keras.models.load_model(p, compile=False) if p.exists() else None
+        if C.AUTOENCODER_PATH.exists():
+            return keras.models.load_model(C.AUTOENCODER_PATH, compile=False)
+        avail = available_autoencoders()
+        return load_autoencoder(avail[0]) if avail else None
     except Exception:
         return None
+
+
+def available_autoencoders() -> list[str]:
+    """Catégories pour lesquelles un autoencodeur .keras est présent dans models/."""
+    if not C.AUTOENCODER_DIR.exists():
+        return []
+    found = {p.stem.replace("autoencoder_", "") for p in C.AUTOENCODER_DIR.glob("autoencoder_*.keras")}
+    return [c for c in C.AUTOENCODER_CATEGORIES if c in found] or sorted(found)
+
+
+# ════════════════════════════════════════════════════════════════════════
+# CNN SUPERVISÉ (15 catégories, entraîné par l'équipe — voir models/cnn_binary_*.keras)
+# ════════════════════════════════════════════════════════════════════════
+def available_cnn_variants() -> list[str]:
+    return [name for name, p in C.CNN_MODELS.items() if p.exists()]
+
+
+def load_cnn(variant: str):
+    """Charge une variante du CNN binaire 15 catégories (aucun réentraînement)."""
+    try:
+        p = C.CNN_MODELS.get(variant)
+        if p is None or not p.exists():
+            return None
+        from tensorflow import keras
+        return keras.models.load_model(p, compile=False)
+    except Exception:
+        return None
+
+
+def _resize_to_model(img_rgb: np.ndarray, model) -> np.ndarray:
+    """Redimensionne l'image à l'entrée attendue par le modèle (peut différer de TARGET_SIZE)."""
+    h, w = model.input_shape[1], model.input_shape[2]
+    if (img_rgb.shape[0], img_rgb.shape[1]) == (h, w):
+        return img_rgb
+    if _HAS_CV2:
+        return cv2.resize(img_rgb, (w, h))
+    from PIL import Image as _Image
+    return np.array(_Image.fromarray(img_rgb).resize((w, h)))
+
+
+def score_cnn(img_rgb: np.ndarray, model) -> dict:
+    """Score du CNN supervisé = probabilité de défaut (sortie sigmoïde), verdict au seuil 0,5."""
+    x = _resize_to_model(img_rgb, model).astype("float32") / 255.0
+    proba = float(model.predict(x[None, ...], verbose=0)[0][0])
+    return {"score": proba, "verdict": proba > 0.5}
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -176,8 +226,11 @@ def score_baseline(img_rgb, template_rgb) -> dict:
 
 
 def score_autoencoder(img_rgb, model) -> dict:
-    """Erreur de reconstruction de l'autoencodeur = score d'anomalie."""
-    x = img_rgb.astype("float32") / 255.0
+    """Erreur de reconstruction de l'autoencodeur = score d'anomalie.
+    Redimensionne à l'entrée attendue par le modèle (nos autoencodeurs sont en 64×64,
+    différent de TARGET_SIZE=128×128 utilisé par le reste de l'appli)."""
+    img_resized = _resize_to_model(img_rgb, model)
+    x = img_resized.astype("float32") / 255.0
     recon = model.predict(x[None, ...], verbose=0)[0]
     err_map = np.mean((x - recon) ** 2, axis=-1)   # carte d'erreur par pixel
     return {"score": float(err_map.mean()), "recon": (recon * 255).astype(np.uint8),
