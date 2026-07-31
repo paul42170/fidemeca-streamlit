@@ -41,6 +41,12 @@ CNN_MODELS = {
     "CNN 64×64 — GlobalAveragePooling, ablation (AUC 0.542)": APP_ROOT / "models" / "cnn_binary_15cat_gap_best.keras",
 }
 
+# Transfer Learning ResNet50 (détection binaire, catégorie "bottle" uniquement — Ludovic).
+# Poids de ~205 Mo : fractionnés en morceaux <50 Mo (resnet50_bottle_detection.keras.part-*)
+# pour respecter la limite GitHub de 100 Mo/fichier, reconstitués automatiquement au 1er chargement.
+TRANSFER_LEARNING_PATH = APP_ROOT / "models" / "resnet50_bottle_detection.keras"
+TRANSFER_LEARNING_CATEGORIES = ["bottle"]
+
 # --- Paramètres image ------------------------------------------------------
 DIMENSION = 128
 TARGET_SIZE = (DIMENSION, DIMENSION)   # (largeur, hauteur)

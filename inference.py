@@ -214,6 +214,63 @@ def score_cnn(img_rgb: np.ndarray, model) -> dict:
 
 
 # ════════════════════════════════════════════════════════════════════════
+# TRANSFER LEARNING RESNET50 (catégorie "bottle" — Ludovic)
+# ════════════════════════════════════════════════════════════════════════
+def _reassemble_parts(target_path) -> bool:
+    """Reconstitue un fichier découpé en morceaux <fichier>.part-* (contournement de la
+    limite GitHub de 100 Mo/fichier pour les gros modèles Keras). Ne fait rien si le
+    fichier complet existe déjà ; renvoie False si aucun morceau n'est trouvé."""
+    if target_path.exists():
+        return True
+    parts = sorted(target_path.parent.glob(target_path.name + ".part-*"))
+    if not parts:
+        return False
+    try:
+        tmp_path = target_path.with_suffix(target_path.suffix + ".tmp")
+        with open(tmp_path, "wb") as out:
+            for p in parts:
+                out.write(p.read_bytes())
+        tmp_path.rename(target_path)
+        return True
+    except Exception:
+        return False
+
+
+def available_transfer_learning() -> list[str]:
+    """Catégories pour lesquelles un modèle de transfer learning est disponible
+    (fichier complet déjà présent, ou reconstitué à partir de ses morceaux)."""
+    if _reassemble_parts(C.TRANSFER_LEARNING_PATH):
+        return C.TRANSFER_LEARNING_CATEGORIES
+    return []
+
+
+def load_transfer_learning(category: str):
+    """Charge le modèle ResNet50 (transfer learning) d'une catégorie, sans réentraînement."""
+    if category not in C.TRANSFER_LEARNING_CATEGORIES:
+        return None
+    try:
+        if not _reassemble_parts(C.TRANSFER_LEARNING_PATH):
+            return None
+        from tensorflow import keras
+        return keras.models.load_model(C.TRANSFER_LEARNING_PATH, compile=False)
+    except Exception:
+        return None
+
+
+def score_transfer_learning(img_rgb: np.ndarray, model) -> dict:
+    """Score du transfer learning ResNet50 = probabilité de défaut (sortie sigmoïde).
+    Utilise le prétraitement spécifique ResNet50 (preprocess_input : conversion BGR +
+    centrage sur les statistiques ImageNet), différent de la simple normalisation /255
+    utilisée par le CNN from scratch — c'est celui utilisé à l'entraînement (voir
+    transfer_learning_mvtec_8.py sur le dépôt GitHub d'équipe)."""
+    from tensorflow.keras.applications.resnet50 import preprocess_input
+    img_resized = _resize_to_model(img_rgb, model)
+    x = preprocess_input(img_resized.astype("float32"))
+    proba = float(model.predict(x[None, ...], verbose=0)[0][0])
+    return {"score": proba, "verdict": proba > 0.5}
+
+
+# ════════════════════════════════════════════════════════════════════════
 # SCORING
 # ════════════════════════════════════════════════════════════════════════
 def score_baseline(img_rgb, template_rgb) -> dict:

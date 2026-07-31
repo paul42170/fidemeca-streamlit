@@ -47,15 +47,17 @@ with st.sidebar:
     st.divider()
     st.caption("Modèles chargés (aucun réentraînement) :")
     from inference import (available_templates, load_feature_model, available_autoencoders,
-                           available_cnn_variants)
+                           available_cnn_variants, available_transfer_learning)
     _tpls = available_templates()
     _fm, _sc = load_feature_model()
     _ae_cats = available_autoencoders()
     _cnn_variants = available_cnn_variants()
+    _tl_cats = available_transfer_learning()
     st.write("Templates :", f"{len(_tpls)} disponibles" if _tpls else "aucun")
     st.write("Modèle features (RF) :", "disponible" if _fm else "absent")
     st.write("Autoencodeurs :", ', '.join(_ae_cats) if _ae_cats else "aucun")
     st.write("CNN 15 catégories :", f"{len(_cnn_variants)} variante(s)" if _cnn_variants else "absent")
+    st.write("Transfer Learning (ResNet50) :", ', '.join(_tl_cats) if _tl_cats else "absent")
     st.caption("Détail de tous les modèles testés par l'équipe dans l'onglet Comparatif.")
 
 
@@ -79,15 +81,18 @@ aux consignes du mentor). Quatre modes selon ce qui est disponible dans `models/
     from inference import (load_template, to_rgb_array, score_baseline, extract_features,
                            load_feature_model, load_autoencoder, score_autoencoder,
                            available_templates, available_autoencoders, available_cnn_variants,
-                           load_cnn, score_cnn)
+                           load_cnn, score_cnn, available_transfer_learning,
+                           load_transfer_learning, score_transfer_learning)
 
     ae_cats = available_autoencoders()
     cnn_variants = available_cnn_variants()
+    tl_cats = available_transfer_learning()
     mode = st.radio("Mode de détection", [
         "Baseline — différence au template (toujours dispo)",
         "Modèle sur features — Random Forest (joblib)",
         f"AutoEncodeur (Keras) — {', '.join(ae_cats) if ae_cats else 'aucun disponible'}",
         f"CNN supervisé — 15 catégories (Keras) — {len(cnn_variants)} variante(s)",
+        f"Transfer Learning — ResNet50 (Keras) — {', '.join(tl_cats) if tl_cats else 'aucun disponible'}",
     ], horizontal=False)
 
     tpls = available_templates()
@@ -157,7 +162,7 @@ aux consignes du mentor). Quatre modes selon ce qui est disponible dans `models/
                     (st.error if verdict else st.success)(
                         "DÉFECTUEUSE" if verdict else "Conforme")
 
-            else:  # CNN supervisé
+            elif mode.startswith("CNN"):
                 cnn = load_cnn(variant) if variant else None
                 if cnn is None:
                     st.warning("Aucune variante de CNN disponible dans `models/`.")
@@ -169,6 +174,24 @@ aux consignes du mentor). Quatre modes selon ce qui est disponible dans `models/
                     st.progress(min(max(res["score"], 0.0), 1.0))
                     (st.error if res["verdict"] else st.success)(
                         "Pièce probablement DÉFECTUEUSE" if res["verdict"] else "Pièce conforme")
+
+            else:  # Transfer Learning ResNet50
+                if cat not in tl_cats:
+                    st.warning(f"Aucun modèle ResNet50 entraîné pour « {cat} ». Catégorie(s) "
+                               f"disponible(s) : {', '.join(tl_cats) if tl_cats else 'aucune'}.")
+                else:
+                    tl_model = load_transfer_learning(cat)
+                    if tl_model is None:
+                        st.warning("Modèle ResNet50 introuvable ou erreur au chargement.")
+                    else:
+                        res = score_transfer_learning(img, tl_model)
+                        st.caption("Backbone ResNet50 pré-entraîné sur ImageNet, tête de classification "
+                                   "fine-tunée (exploration de Ludovic — voir dépôt GitHub d'équipe, "
+                                   "`transfer_learning_mvtec_8.py`).")
+                        st.metric("Probabilité de défaut (sortie sigmoïde)", f"{res['score']:.3f}")
+                        st.progress(min(max(res["score"], 0.0), 1.0))
+                        (st.error if res["verdict"] else st.success)(
+                            "Pièce probablement DÉFECTUEUSE" if res["verdict"] else "Pièce conforme")
         except Exception as e:
             st.error(f"Erreur pendant le scoring : {e}")
     else:
@@ -253,6 +276,7 @@ with t_cmp:
     st.image(str(C.APP_ROOT / "assets" / "tl_comparaison_backbones_15cat.png"),
              caption="Comparaison des 4 backbones — AUC-ROC et F1 par catégorie (Ludovic).",
              use_container_width=True)
-    st.caption("Poids entraînés disponibles uniquement pour ResNet50 sur la catégorie bottle "
-               "(fichier de 215 Mo, au-delà de la limite de 100 Mo de GitHub) — non chargé en démo live "
-               "pour cette raison, mais consultable en local (models_demo/ sur le poste de Ludovic).")
+    st.success("Le modèle ResNet50 (catégorie bottle) est disponible en démo live dans l'onglet "
+               "Démo interactive : ses poids (205 Mo) dépassaient la limite GitHub de 100 Mo/fichier, "
+               "ils ont été fractionnés en morceaux puis reconstitués automatiquement au chargement. "
+               "VGG16, EfficientNetB0 et MobileNetV2 restent sans démo live (poids non récupérés).")
