@@ -211,7 +211,7 @@ with t_cmp:
                       "Supervisé", "Supervisé", "Non supervisé (one-class)"],
         "AUC-ROC moyen": [0.718, 0.748, 0.7295, 0.542, 0.937, 0.930, None],
         "Démo live": ["Oui (bottle, carpet, screw)", "Oui", "Oui", "Oui", "Non — poids non versionnés",
-                      "Non — poids non versionnés", "Non — non finalisé"],
+                      "Non — poids entraînés (215 Mo), trop volumineux pour GitHub", "Non — non finalisé"],
     })
     st.dataframe(modele_df, use_container_width=True, hide_index=True)
 
@@ -236,3 +236,23 @@ with t_cmp:
     st.caption("EfficientNetB0/ResNet50/PaDiM ne sont pas chargés en démo live : leurs poids (plusieurs "
                "centaines de Mo par catégorie) n'ont pas été versionnés sur GitHub — voir le rapport final "
                "pour le détail complet des courbes ROC et matrices de confusion par catégorie.")
+
+    st.divider()
+    st.subheader("Benchmark complémentaire — 4 backbones sur les 15 catégories (Ludovic)")
+    st.caption("Exploration indépendante de Ludovic (transfer_learning_mvtec_8.py, dépôt GitHub d'équipe) : "
+               "comparaison de 4 backbones ImageNet sur la détection binaire, toutes catégories confondues. "
+               "Protocole d'entraînement propre à cette exploration — chiffres à lire séparément de ceux "
+               "retenus dans le rapport final (tableau ci-dessus, protocole d'Alex).")
+    backbone_df = pd.DataFrame({
+        "Backbone": ["ResNet50", "VGG16", "EfficientNetB0", "MobileNetV2"],
+        "AUC-ROC moyen": [0.984, 0.981, 0.945, 0.891],
+        "AUC-ROC écart-type": [0.013, 0.026, 0.077, 0.154],
+        "F1 moyen": [0.963, 0.967, 0.941, 0.867],
+    }).sort_values("AUC-ROC moyen", ascending=False)
+    st.dataframe(backbone_df, use_container_width=True, hide_index=True)
+    st.image(str(C.APP_ROOT / "assets" / "tl_comparaison_backbones_15cat.png"),
+             caption="Comparaison des 4 backbones — AUC-ROC et F1 par catégorie (Ludovic).",
+             use_container_width=True)
+    st.caption("Poids entraînés disponibles uniquement pour ResNet50 sur la catégorie bottle "
+               "(fichier de 215 Mo, au-delà de la limite de 100 Mo de GitHub) — non chargé en démo live "
+               "pour cette raison, mais consultable en local (models_demo/ sur le poste de Ludovic).")
