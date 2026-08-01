@@ -238,28 +238,6 @@ with t_cmp:
     })
     st.dataframe(modele_df, use_container_width=True, hide_index=True)
 
-    import matplotlib.pyplot as plt
-    plot_df = modele_df.dropna(subset=["AUC-ROC moyen"]).sort_values("AUC-ROC moyen")
-    fig, ax = plt.subplots(figsize=(9, 3.6))
-    colors = [C.COLOR_ANOMALY if v < 0.6 else (C.COLOR_PRIMARY if v > 0.9 else "#8FA8D6")
-              for v in plot_df["AUC-ROC moyen"]]
-    ax.barh(plot_df["Modèle"], plot_df["AUC-ROC moyen"], color=colors)
-    for i, v in enumerate(plot_df["AUC-ROC moyen"]):
-        ax.text(v + 0.01, i, f"{v:.3f}", va="center", fontsize=9)
-    ax.set_xlim(0, 1.05)
-    ax.set_xlabel("AUC-ROC moyen (15 catégories)")
-    ax.axvline(0.99, color="#555", linestyle="--", linewidth=1)
-    ax.text(0.99, -0.7, "État de l'art\n(PatchCore) ≈ 0.99", fontsize=8, color="#555", ha="center")
-    st.pyplot(fig)
-
-    st.info("**Ce qui a le plus fait progresser la performance :** le passage d'une approche non "
-            "supervisée pure (AutoEncoder) au transfer learning supervisé (EfficientNetB0, ResNet50) — "
-            "les features génériques ImageNet généralisent nettement mieux, en particulier sur les "
-            "textures répétitives où l'AutoEncoder et le CNN from scratch échouaient le plus.")
-    st.caption("EfficientNetB0/ResNet50/PaDiM ne sont pas chargés en démo live : leurs poids (plusieurs "
-               "centaines de Mo par catégorie) n'ont pas été versionnés sur GitHub — voir le rapport final "
-               "pour le détail complet des courbes ROC et matrices de confusion par catégorie.")
-
     st.divider()
     st.subheader("Benchmark complémentaire — 4 backbones sur les 15 catégories (Ludovic)")
     st.caption("Exploration indépendante de Ludovic (transfer_learning_mvtec_8.py, dépôt GitHub d'équipe) : "
@@ -273,10 +251,49 @@ with t_cmp:
         "F1 moyen": [0.963, 0.967, 0.941, 0.867],
     }).sort_values("AUC-ROC moyen", ascending=False)
     st.dataframe(backbone_df, use_container_width=True, hide_index=True)
-    st.image(str(C.APP_ROOT / "assets" / "tl_comparaison_backbones_15cat.png"),
-             caption="Comparaison des 4 backbones — AUC-ROC et F1 par catégorie (Ludovic).",
-             use_container_width=True)
-    st.success("Le modèle ResNet50 (catégorie bottle) est disponible en démo live dans l'onglet "
-               "Démo interactive : ses poids (205 Mo) dépassaient la limite GitHub de 100 Mo/fichier, "
-               "ils ont été fractionnés en morceaux puis reconstitués automatiquement au chargement. "
-               "VGG16, EfficientNetB0 et MobileNetV2 restent sans démo live (poids non récupérés).")
+
+    st.divider()
+    st.subheader("Comparaison globale — tous les modèles testés (AUC-ROC)")
+    st.caption("Les deux tableaux ci-dessus sont fusionnés dans un seul graphique, à titre indicatif : "
+               "barres bleues = protocole du rapport final (Alex/Fabrice/Paul), barres oranges = "
+               "benchmark complémentaire de Ludovic. Deux protocoles distincts — ne pas comparer les "
+               "valeurs terme à terme (ex. les deux lignes ResNet50).")
+
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+
+    combined_df = pd.concat([
+        modele_df.dropna(subset=["AUC-ROC moyen"])[["Modèle", "AUC-ROC moyen"]]
+            .assign(Source="Rapport final", Modèle=lambda d: d["Modèle"] + " (rapport)"),
+        backbone_df[["Backbone", "AUC-ROC moyen"]]
+            .rename(columns={"Backbone": "Modèle"})
+            .assign(Source="Benchmark Ludovic", Modèle=lambda d: d["Modèle"] + " (Ludovic, 15cat)"),
+    ], ignore_index=True).sort_values("AUC-ROC moyen")
+
+    source_colors = {"Rapport final": C.COLOR_PRIMARY, "Benchmark Ludovic": "#E07B00"}
+    colors = [source_colors[s] for s in combined_df["Source"]]
+
+    fig, ax = plt.subplots(figsize=(9, 5.2))
+    ax.barh(combined_df["Modèle"], combined_df["AUC-ROC moyen"], color=colors)
+    for i, v in enumerate(combined_df["AUC-ROC moyen"]):
+        ax.text(v + 0.01, i, f"{v:.3f}", va="center", fontsize=9)
+    ax.set_xlim(0, 1.05)
+    ax.set_xlabel("AUC-ROC moyen (15 catégories)")
+    ax.axvline(0.99, color="#555", linestyle="--", linewidth=1)
+    ax.text(0.99, -1.3, "État de l'art\n(PatchCore) ≈ 0.99", fontsize=8, color="#555", ha="center")
+    ax.legend(handles=[mpatches.Patch(color=c, label=s) for s, c in source_colors.items()],
+              loc="lower right", fontsize=8)
+    st.pyplot(fig)
+
+    st.info("**Ce qui a le plus fait progresser la performance :** le passage d'une approche non "
+            "supervisée pure (AutoEncoder) au transfer learning supervisé (EfficientNetB0, ResNet50) — "
+            "les features génériques ImageNet généralisent nettement mieux, en particulier sur les "
+            "textures répétitives où l'AutoEncoder et le CNN from scratch échouaient le plus.")
+    st.caption("EfficientNetB0/ResNet50 (rapport)/PaDiM ne sont pas chargés en démo live : leurs poids "
+               "n'ont pas été versionnés sur GitHub — voir le rapport final pour le détail complet des "
+               "courbes ROC et matrices de confusion par catégorie.")
+    st.success("Le modèle ResNet50 de Ludovic (catégorie bottle) est disponible en démo live dans l'onglet "
+               "Démo interactive : ses poids (205 Mo) dépassaient la limite GitHub de 100 Mo/fichier, ils "
+               "ont été fractionnés en morceaux puis reconstitués automatiquement au chargement. VGG16, "
+               "EfficientNetB0 et MobileNetV2 (benchmark Ludovic) restent sans démo live (poids non "
+               "récupérés).")
